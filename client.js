@@ -8,8 +8,8 @@ class ChatClient {
         this.id = nanoid(10);
         this.nickname = nickname;
         this.serverUrl = serverUrl;
-        this.ws = null;
-        this.rl = null;
+        this.webSocket = null;
+        this.readLine = null;
         this.isConnected = false;
     }
 
@@ -17,32 +17,32 @@ class ChatClient {
         return new Promise((resolve, reject) => {
             console.log(chalk.gray(`Connecting to ${this.serverUrl}...`));
 
-            this.ws = new WebSocket(this.serverUrl);
+            this.webSocket = new WebSocket(this.serverUrl);
 
-            this.ws.on('open', () => {
+            this.webSocket.on('open', () => {
                 // Send join message
-                this.ws.send(JSON.stringify({
+                this.webSocket.send(JSON.stringify({
                     type: 'join',
                     id: this.id,
                     nickname: this.nickname
                 }));
             });
 
-            this.ws.on('message', (data) => {
+            this.webSocket.on('message', (data) => {
                 const message = JSON.parse(data.toString());
                 this.handleMessage(message, resolve);
             });
 
-            this.ws.on('close', () => {
-                console.log(chalk.red('\n❌ Disconnected from server'));
+            this.webSocket.on('close', () => {
+                console.log(chalk.red('\nDisconnected from server'));
                 this.isConnected = false;
-                if (this.rl) {
-                    this.rl.close();
+                if (this.readLine) {
+                    this.readLine.close();
                 }
                 process.exit(0);
             });
 
-            this.ws.on('error', (err) => {
+            this.webSocket.on('error', (err) => {
                 console.error(chalk.red('Connection error:'), err.message);
                 reject(err);
             });
@@ -53,7 +53,7 @@ class ChatClient {
         switch (message.type) {
             case 'joined':
                 this.isConnected = true;
-                console.log(chalk.green(`\n✅ Connected as ${message.nickname}!`));
+                console.log(chalk.green(`\nConnected as ${message.nickname}!`));
                 console.log(chalk.gray(`Your ID: ${message.id}`));
                 console.log(chalk.gray(`Users online: ${message.clientsOnline}\n`));
 
@@ -65,12 +65,12 @@ class ChatClient {
                 break;
 
             case 'chat':
-                console.log(chalk.yellow(`\n💬 ${message.from}: ${message.text}`));
+                console.log(chalk.yellow(`\n${message.from}: ${message.text}`));
                 this.showPrompt();
                 break;
 
             case 'private':
-                console.log(chalk.magenta(`\n🔒 [Private] ${message.from}: ${message.text}`));
+                console.log(chalk.magenta(`\n[Private] ${message.from}: ${message.text}`));
                 this.showPrompt();
                 break;
 
@@ -80,17 +80,17 @@ class ChatClient {
                 break;
 
             case 'user_joined':
-                console.log(chalk.blue(`\n➕ ${message.nickname} joined the chat (${message.clientsOnline} online)`));
+                console.log(chalk.blue(`\n${message.nickname} joined the chat (${message.clientsOnline} online)`));
                 this.showPrompt();
                 break;
 
             case 'user_left':
-                console.log(chalk.red(`\n➖ ${message.nickname} left the chat (${message.clientsOnline} online)`));
+                console.log(chalk.red(`\n${message.nickname} left the chat (${message.clientsOnline} online)`));
                 this.showPrompt();
                 break;
 
             case 'user_list':
-                console.log(chalk.cyan('\n📋 Online users:'));
+                console.log(chalk.cyan('\nOnline users:'));
                 message.users.forEach(user => {
                     const isSelf = user.id === this.id;
                     console.log(chalk.gray(`  ${isSelf ? '👤' : '  '} ${user.nickname} ${isSelf ? '(you)' : `[${user.id}]`}`));
@@ -99,7 +99,7 @@ class ChatClient {
                 break;
 
             case 'error':
-                console.log(chalk.red(`\n⚠️  Error: ${message.message}`));
+                console.log(chalk.red(`\nError: ${message.message}`));
                 this.showPrompt();
                 break;
 
@@ -109,7 +109,7 @@ class ChatClient {
     }
 
     startCLI() {
-        this.rl = readline.createInterface({
+        this.readLine = readline.createInterface({
             input: process.stdin,
             output: process.stdout,
             prompt: chalk.cyan(`${this.nickname}> `)
@@ -120,13 +120,13 @@ class ChatClient {
         console.log(chalk.gray('  /pm <id> <message> - send private message'));
         console.log(chalk.gray('  /quit - exit\n'));
 
-        this.rl.prompt();
+        this.readLine.prompt();
 
-        this.rl.on('line', (line) => {
+        this.readLine.on('line', (line) => {
             const text = line.trim();
 
             if (!text) {
-                this.rl.prompt();
+                this.readLine.prompt();
                 return;
             }
 
@@ -138,10 +138,10 @@ class ChatClient {
                 this.sendMessage(text);
             }
 
-            this.rl.prompt();
+            this.readLine.prompt();
         });
 
-        this.rl.on('close', () => {
+        this.readLine.on('close', () => {
             this.disconnect();
         });
     }
@@ -158,7 +158,7 @@ class ChatClient {
 
             case '/users':
             case '/list':
-                this.ws.send(JSON.stringify({ type: 'list_users' }));
+                this.webSocket.send(JSON.stringify({ type: 'list_users' }));
                 break;
 
             case '/pm':
@@ -168,7 +168,7 @@ class ChatClient {
                 } else {
                     const toId = parts[1];
                     const text = parts.slice(2).join(' ');
-                    this.ws.send(JSON.stringify({
+                    this.webSocket.send(JSON.stringify({
                         type: 'private',
                         toId: toId,
                         text: text
@@ -188,25 +188,25 @@ class ChatClient {
             return;
         }
 
-        this.ws.send(JSON.stringify({
+        this.webSocket.send(JSON.stringify({
             type: 'chat',
             text: text
         }));
     }
 
     showPrompt() {
-        if (this.rl) {
-            this.rl.prompt(true);
+        if (this.readLine) {
+            this.readLine.prompt(true);
         }
     }
 
     disconnect() {
-        console.log(chalk.yellow('\n👋 Disconnecting...'));
-        if (this.ws) {
-            this.ws.close();
+        console.log(chalk.yellow('\nDisconnecting...'));
+        if (this.webSocket) {
+            this.webSocket.close();
         }
-        if (this.rl) {
-            this.rl.close();
+        if (this.readLine) {
+            this.readLine.close();
         }
         process.exit(0);
     }

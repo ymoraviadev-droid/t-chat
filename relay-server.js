@@ -4,19 +4,19 @@ const http = require('http');
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const webSocketServer = new WebSocket.Server({ server });
 
 // Store connected clients
 // Structure: { ws, id, nickname, connectedAt }
 const clients = new Map();
 
-wss.on('connection', (ws) => {
+webSocketServer.on('connection', (webSocket) => {
     let clientId = null;
     let clientNickname = 'Anonymous';
 
-    console.log('🔌 New connection attempt');
+    console.log('New connection attempt');
 
-    ws.on('message', (data) => {
+    webSocket.on('message', (data) => {
         try {
             const message = JSON.parse(data.toString());
 
@@ -27,12 +27,12 @@ wss.on('connection', (ws) => {
                     clientId = message.id;
                     clientNickname = message.nickname || 'Anonymous';
 
-                    clients.set(clientId, { ws, id: clientId, nickname: clientNickname, connectedAt: Date.now() });
+                    clients.set(clientId, { ws: webSocket, id: clientId, nickname: clientNickname, connectedAt: Date.now() });
 
-                    console.log(`✅ ${clientNickname} (${clientId}) joined. Total clients: ${clients.size}`);
+                    console.log(`${clientNickname} (${clientId}) joined. Total clients: ${clients.size}`);
 
                     // Send confirmation to the client
-                    ws.send(JSON.stringify({
+                    webSocket.send(JSON.stringify({
                         type: 'joined',
                         id: clientId,
                         nickname: clientNickname,
@@ -49,7 +49,7 @@ wss.on('connection', (ws) => {
 
                 case 'chat':
                     // Forward chat message to all other clients
-                    console.log(`💬 ${clientNickname}: ${message.text}`);
+                    console.log(`${clientNickname}: ${message.text}`);
 
                     broadcast({
                         type: 'chat',
@@ -73,13 +73,13 @@ wss.on('connection', (ws) => {
                         }));
 
                         // Send confirmation back to sender
-                        ws.send(JSON.stringify({
+                        webSocket.send(JSON.stringify({
                             type: 'private_sent',
                             to: recipient.nickname,
                             text: message.text
                         }));
                     } else {
-                        ws.send(JSON.stringify({
+                        webSocket.send(JSON.stringify({
                             type: 'error',
                             message: 'Recipient not found or offline'
                         }));
@@ -93,7 +93,7 @@ wss.on('connection', (ws) => {
                         nickname: c.nickname
                     }));
 
-                    ws.send(JSON.stringify({
+                    webSocket.send(JSON.stringify({
                         type: 'user_list',
                         users: userList
                     }));
@@ -104,17 +104,17 @@ wss.on('connection', (ws) => {
             }
         } catch (err) {
             console.error('Error parsing message:', err);
-            ws.send(JSON.stringify({
+            webSocket.send(JSON.stringify({
                 type: 'error',
                 message: 'Invalid message format'
             }));
         }
     });
 
-    ws.on('close', () => {
+    webSocket.on('close', () => {
         if (clientId && clients.has(clientId)) {
             clients.delete(clientId);
-            console.log(`👋 ${clientNickname} left. Total clients: ${clients.size}`);
+            console.log(`${clientNickname} left. Total clients: ${clients.size}`);
 
             // Notify all other clients
             broadcast({
@@ -125,7 +125,7 @@ wss.on('connection', (ws) => {
         }
     });
 
-    ws.on('error', (err) => {
+    webSocket.on('error', (err) => {
         console.error('WebSocket error:', err);
     });
 });
@@ -142,7 +142,7 @@ function broadcast(message, excludeId = null) {
 }
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
     res.json({
         status: 'ok',
         clientsOnline: clients.size,
@@ -153,15 +153,15 @@ app.get('/health', (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
-    console.log(`🚀 Relay server running on port ${PORT}`);
-    console.log(`📡 WebSocket endpoint: ws://localhost:${PORT}`);
+    console.log(`Relay server running on port ${PORT}`);
+    console.log(`WebSocket endpoint: ws://localhost:${PORT}`);
 });
 
 // Clean up dead connections every minute
 setInterval(() => {
     for (const [id, client] of clients.entries()) {
         if (client.ws.readyState !== WebSocket.OPEN) {
-            console.log(`🧹 Removing dead connection: ${client.nickname}`);
+            console.log(`Removing dead connection: ${client.nickname}`);
             clients.delete(id);
         }
     }
